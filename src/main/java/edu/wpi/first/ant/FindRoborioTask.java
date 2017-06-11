@@ -139,13 +139,18 @@ public class FindRoborioTask extends Task {
                 for (InetAddress current : InetAddress.getAllByName(host)) {
                     if (!current.isMulticastAddress()) {
                         if (current instanceof Inet4Address) {
+                            if (isDone()) {
+                                return;
+                            }
                             System.out.println("resolved " + host + " to " + current.getHostAddress());
                             startConnect(current);
                         }
                     }
                 }
             } catch (Exception e) {
-                log("could not resolve " + host, e, Project.MSG_WARN);
+                if (!isDone()) {
+                    log("could not resolve " + host, e, Project.MSG_WARN);
+                }
             } finally {
                 finishAttempt(host);
             }
@@ -227,6 +232,10 @@ public class FindRoborioTask extends Task {
             HttpGet get = new HttpGet(uri);
             get.setConfig(config);
             HttpResponse response = client.execute(get, context);
+
+            if (isDone()) {
+                return;
+            }
 
             int statusCode = response.getStatusLine().getStatusCode();
             if (statusCode != HttpStatus.SC_OK) {
