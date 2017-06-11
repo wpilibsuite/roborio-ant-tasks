@@ -1,10 +1,14 @@
 package edu.wpi.first.ant;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.UnknownHostException;
 import java.net.URI;
 import java.util.HashSet;
@@ -45,6 +49,7 @@ public class FindRoborioTask extends Task {
     private String imageProperty = null;
 
     private Pattern imagePattern = Pattern.compile("\"FRC_roboRIO_(?<year>[0-9]+)_v(?<image>[0-9]+)\"");
+    private Pattern dsPattern = Pattern.compile("\"robotIP\"[^:]*:[^0-9]*([0-9]+)");
 
     private final Lock lock = new ReentrantLock();
     private final Condition cvDone = lock.newCondition();
@@ -95,6 +100,7 @@ public class FindRoborioTask extends Task {
         startConnect("roboRIO-" + team + "-FRC.local");
         startConnect("roboRIO-" + team + "-FRC.lan");
         startConnect("roboRIO-" + team + "-FRC.frc-field.local");
+        startDsConnect();
 
         // wait for a connection attempt to be successful, or timeout
         lock.lock();
@@ -121,6 +127,80 @@ public class FindRoborioTask extends Task {
         } finally {
             lock.unlock();
         }
+    }
+
+    private class DsConnect implements Runnable {
+        @Override
+        public void run() {
+            try {
+                // Try to connect to DS on the local machine
+                Socket socket = new Socket();
+                InetAddress dsAddress = InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
+                socket.connect(new InetSocketAddress(dsAddress, 1742), CONNECTION_TIMEOUT_MS);
+
+                // Read JSON "{...}".  This is very limited, does not handle
+                // quoted "}" or nested {}, but is sufficient for this purpose.
+                InputStream ins = new BufferedInputStream(socket.getInputStream());
+                ByteArrayOutputStream buf = new ByteArrayOutputStream();
+
+                int b;
+                // Throw away characters until {
+                while ((b = ins.read()) >= 0 && b != '{' && !isDone()) {}
+
+                // Read characters until }
+                while ((b = ins.read()) >= 0 && b != '}' && !isDone()) {
+                    buf.write(b);
+                }
+
+                if (isDone()) {
+                    return;
+                }
+
+                String json = buf.toString("UTF-8");
+
+                // Look for "robotIP":12345, and get 12345 portion
+                Matcher m = dsPattern.matcher(json);
+                if (!m.find()) {
+                    log("DS did not provide robotIP", Project.MSG_WARN);
+                    return;
+                }
+                long ip = 0;
+                try {
+                    ip = Long.parseLong(m.group(1));
+                } catch (NumberFormatException e) {
+                    if (!isDone()) {
+                        log("DS provided invalid IP: \"" + m.group(1) + "\"", e, Project.MSG_WARN);
+                    }
+                }
+
+                // If zero, the DS isn't connected to the robot
+                if (ip == 0) {
+                    return;
+                }
+
+                // Kick off connection to that address
+                InetAddress address = InetAddress.getByAddress(new byte[] {
+                    (byte)((ip >> 24) & 0xff),
+                    (byte)((ip >> 16) & 0xff),
+                    (byte)((ip >> 8) & 0xff),
+                    (byte)(ip & 0xff)});
+                System.out.println("DS provided " + address.getHostAddress());
+                startConnect(address);
+            } catch (Exception e) {
+                if (!isDone()) {
+                    log("could not get IP from DS", e, Project.MSG_WARN);
+                }
+            } finally {
+                finishAttempt("DS");
+            }
+        }
+    }
+
+    private void startDsConnect() {
+        startAttempt("DS");
+        Thread thr = new Thread(new DsConnect());
+        thr.setDaemon(true);
+        thr.start();
     }
 
     // Address resolution can take a while, so we do this in a separate
