@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<antlib>
+  <taskdef name="find-roborio" classname="edu.wpi.first.ant.FindRoborioTask" />
+</antlib>
