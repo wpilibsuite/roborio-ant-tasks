@@ -35,6 +35,7 @@ import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.BasicAuthCache;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.conn.BasicHttpClientConnectionManager;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
@@ -280,8 +281,9 @@ public class FindRoborioTask extends Task {
         try {
             // Configure authentication
             HttpClientContext context = HttpClientContext.create();
+            CredentialsProvider provider = null;
             if (username != null) {
-                CredentialsProvider provider = new BasicCredentialsProvider();
+                provider = new BasicCredentialsProvider();
                 provider.setCredentials(AuthScope.ANY,
                         new UsernamePasswordCredentials(username, password));
 
@@ -308,7 +310,14 @@ public class FindRoborioTask extends Task {
 
             // Try to fetch
             System.out.println("trying " + address.getHostAddress());
-            HttpClient client = HttpClientBuilder.create().build();
+            HttpClientBuilder builder = HttpClientBuilder.create()
+                .setConnectionManager(new BasicHttpClientConnectionManager())
+                .disableAutomaticRetries()
+                .disableRedirectHandling();
+            if (provider != null) {
+                builder = builder.setDefaultCredentialsProvider(provider);
+            }
+            HttpClient client = builder.build();
             HttpGet get = new HttpGet(uri);
             get.setConfig(config);
             HttpResponse response = client.execute(get, context);
