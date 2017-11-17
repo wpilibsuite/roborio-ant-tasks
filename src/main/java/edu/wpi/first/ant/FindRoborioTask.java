@@ -327,24 +327,24 @@ public class FindRoborioTask extends Task {
             InputStream is = response.getEntity().getContent();
             BufferedReader reader = new BufferedReader(new InputStreamReader(is));
             String line;
-            String imageYear = null;
-            String image = null;
             while ((line = reader.readLine()) != null) {
+                if (isDone()) {
+                    return;
+                }
                 if (!line.startsWith("IMAGEVERSION")) {
                     continue;
                 }
                 String contents = line.substring(line.indexOf('"', 12));
                 Matcher m = imagePattern.matcher(contents);
                 if (!m.matches()) {
-                    log("Connected to " + address + ", but non-FRC version " + contents + ".  Is the roboRIO imaged for FIRST?", Project.MSG_WARN);
-                    return;
+		    break;
                 }
-                imageYear = m.group("year");
-                image = m.group("image");
+
+                // Success!
+                putResult(address, m.group("year"), m.group("image"));
             }
 
-            // Success!
-            putResult(address, imageYear, image);
+            log("Connected to " + address + ", but did not get FRC version.  Is the roboRIO imaged for FIRST?", Project.MSG_WARN);
         } catch (Exception e) {
             if (!isDone()) {
                 log("Could not connect to " + address.getHostAddress(), e, Project.MSG_WARN);
