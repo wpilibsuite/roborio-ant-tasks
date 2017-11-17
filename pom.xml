@@ -6,7 +6,7 @@
 
     <groupId>edu.wpi.first.ant</groupId>
     <artifactId>roborio-ant-tasks</artifactId>
-    <version>1.0</version>
+    <version>1.1</version>
     <dependencies>
 
         <dependency>
